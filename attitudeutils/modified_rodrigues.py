@@ -4,6 +4,7 @@ Written by: Jeremie X. J. Bannwarth
 """
 
 import numpy as np
+from attitudeutils.quaternion import dcm2quat
 
 
 def mrp2shadow(sigma):
@@ -60,6 +61,8 @@ def quat2mrp(beta):
 def dcm2mrp(C):
     """Convert DCM to MRPs.
 
+    Convert to quaternion first to avoid singularity.
+
     Parameters
     ----------
     dcm : numpy.array
@@ -67,12 +70,9 @@ def dcm2mrp(C):
 
     Returns
     -------
-    q : numpy.array
+    sigma : numpy.array
         Corresponding modified Rodrigues parameters.
     """
-    zeta = np.sqrt(np.trace(C) + 1)
-    sigma = np.array(
-        [[C[1, 2] - C[2, 1]], [C[2, 0] - C[0, 2]], [C[0, 1] - C[1, 0]]]
-    ) / (zeta * (zeta + 2))
+    beta = dcm2quat(C)
 
-    return sigma.ravel()
+    return quat2mrp(beta)
