@@ -7,6 +7,55 @@ import numpy as np
 from attitudeutils.quaternion import dcm2quat
 
 
+def mrpshort(sigma):
+    """Ensure the MRPs represent the short rotation.
+
+    Parameters
+    ----------
+    sigma : numpy.array
+        MRPs representing either long or short rotation.
+
+    Returns
+    -------
+    sigmaShort : numpy.array
+        MRPs representing the short rotation.
+    """
+    if np.linalg.norm(sigma) > 1.0:
+        sigmaShort = -sigma / (np.linalg.norm(sigma) ** 2)
+    else:
+        sigmaShort = sigma
+
+    return sigmaShort
+
+
+def mrpdiff(sigma, w):
+    """Calculate the MRP derivative based on the angular velocity.
+
+    Parameters
+    ----------
+    sigma : numpy.array
+        MRPs representing the current orientation.
+    w : numpy.array
+        Current angular velocity vector in rad/s.
+
+    Returns
+    -------
+    sigmaDot : numpy.array
+        MRP derivative.
+    """
+    sigmaTilde = np.array(
+        [[0, -sigma[2], sigma[1]], [sigma[2], 0, -sigma[0]], [-sigma[1], sigma[0], 0]]
+    )
+    B = (
+        (1 - np.linalg.norm(sigma) ** 2) * np.eye(3)
+        + 2 * sigmaTilde
+        + 2 * np.outer(sigma, sigma)
+    )
+
+    sigmaDot = 0.25 * np.dot(B, w)
+    return sigmaDot
+
+
 def mrpadd(sigmaB, sigmaA):
     """ Add the rotations defined by two MRP sets.
 
