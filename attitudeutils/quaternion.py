@@ -111,7 +111,7 @@ def quatsubtract(r, q, solvefor="first"):
         )
         qOut = np.dot(q2Mat.T, r)
     else:
-        qOut = nan
+        qOut = np.nan
 
     if qOut[0] < 0:
         qOut = -qOut
