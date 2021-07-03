@@ -7,6 +7,48 @@ import numpy as np
 from attitudeutils.quaternion import dcm2quat
 
 
+def mrpadd(sigmaB, sigmaA):
+    """ Add the rotations defined by two MRP sets.
+
+    Perform the rotation [FN(sigmaTot)] = [FB(sigmaB)][BN(sigmaA)]
+
+    Parameters
+    ----------
+    sigmaB : numpy.array
+        MRPs defining the second rotation.
+    sigmaA : numpy.array
+        MRPs defining the first rotation.
+
+    Returns
+    -------
+    sigmaTot : numpy.array
+        MRPs defining the total rotation.
+    """
+    # Check for rotations close to 360 degrees (denominator close to zero)
+    denominator = (
+        1
+        + np.linalg.norm(sigmaA) ** 2 * np.linalg.norm(sigmaB) ** 2
+        - 2 * np.dot(sigmaA, sigmaB)
+    )
+
+    if np.abs(denominator) < 1e-6:
+        sigmaA = mrp2shadow(sigmaA)
+
+    sigmaANorm = np.linalg.norm(sigmaA)
+    sigmaBNorm = np.linalg.norm(sigmaB)
+
+    sigmaTot = (
+        (1 - sigmaANorm ** 2) * sigmaB
+        + (1 - sigmaBNorm ** 2) * sigmaA
+        - 2 * np.cross(sigmaB, sigmaA)
+    ) / (1 + sigmaANorm ** 2 * sigmaBNorm ** 2 - 2 * np.dot(sigmaA, sigmaB))
+
+    if np.linalg.norm(sigmaTot) > 1:
+        sigmaTot = mrp2shadow(sigmaTot)
+
+    return sigmaTot
+
+
 def mrp2shadow(sigma):
     """Convert MRPs to MRPs shadow set.
     
