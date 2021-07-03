@@ -13,7 +13,7 @@ def crpdiff(q, w):
     ----------
     q : numpy.array
         CRP representing the current orientation.
-    p : numpy.array
+    w : numpy.array
         Current angular velocity vector in rad/s.
 
     Returns
