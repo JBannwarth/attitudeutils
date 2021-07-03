@@ -58,6 +58,32 @@ def quat2mrp(beta):
     return beta[1:] / (1 + beta[0])
 
 
+def mrp2dcm(sigma):
+    """Convert MRPs to DCM.
+
+    Parameters
+    ----------
+    sigma : numpy.array
+        Corresponding modified Rodrigues parameters.
+
+    Returns
+    -------
+    dcm : numpy.array
+        Direction cosine matrix.
+    """
+    sigmaTilde = np.array(
+        [[0, -sigma[2], sigma[1]], [sigma[2], 0, -sigma[0]], [-sigma[1], sigma[0], 0]]
+    )
+    sigmaNorm = np.linalg.norm(sigma)
+    dcm = (
+        np.eye(3)
+        + (8.0 * np.dot(sigmaTilde, sigmaTilde) - 4 * (1 - sigmaNorm ** 2) * sigmaTilde)
+        / (1.0 + sigmaNorm ** 2) ** 2
+    )
+
+    return dcm
+
+
 def dcm2mrp(C):
     """Convert DCM to MRPs.
 
