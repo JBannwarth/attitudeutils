@@ -4,6 +4,7 @@ Written by: Jeremie X. J. Bannwarth
 
 import numpy as np
 from attitudeutils.quaternion import quat2dcm
+from attitudeutils.classical_rodrigues import crp2dcm
 from scipy import optimize
 
 
@@ -107,7 +108,7 @@ def devenportq(vB, vN, w):
     return Cbar
 
 
-def quest(vB, vN, w, tol=1E-10):
+def quest(vB, vN, w, tol=1e-10):
     """ Implementation of the QUEST method.
 
     Inputs are automatically renormalised.
@@ -147,13 +148,60 @@ def quest(vB, vN, w, tol=1E-10):
 
     # Find the largest eigenvalue using the Newton-Raphson iteration method
     def f(s):
-        return np.linalg.det(K - s*np.eye(4))
-    
-    lambdaOpt = optimize.newton( f, np.sum(w), tol=tol )
+        return np.linalg.det(K - s * np.eye(4))
 
-    qBar = np.dot( np.linalg.inv((lambdaOpt + sigma)*np.eye(3) - S), Z ).ravel()
+    lambdaOpt = optimize.newton(f, np.sum(w), tol=tol)
 
-    beta = np.insert(qBar,0,1.0) / np.sqrt(1 + np.inner(qBar,qBar))
+    qBar = np.dot(np.linalg.inv((lambdaOpt + sigma) * np.eye(3) - S), Z).ravel()
+
+    beta = np.insert(qBar, 0, 1.0) / np.sqrt(1 + np.inner(qBar, qBar))
+
+    if beta[0] < 0:
+        beta = -beta
+
+    Cbar = quat2dcm(beta)
+
+    return Cbar
+
+
+def olae(vB, vN, w):
+    """ Implementation of the OLAE method.
+
+    Inputs are automatically renormalised.
+
+    Parameters
+    ----------
+    vB : numpy.array
+        Nx3 matrix, each row representing an observation vector in body frame.
+    vN : numpy.array
+        Nx3 matrix, each row representing an vector in world frame.
+    w : numpy.array
+        Vector of length N of weights.
+
+    Returns
+    -------
+        Cbar : numpy.array
+        Estimated orientation as a direction cosine matrix.
+    """
+    # Create matrices
+    N = w.shape[0]
+    d = np.zeros(N * 3)
+    S = np.zeros((N * 3, 3))
+    W = np.eye(N * 3)
+    for k in range(0, N):
+        vB[k, :] = vB[k, :] / np.linalg.norm(vB[k, :])
+        vN[k, :] = vN[k, :] / np.linalg.norm(vN[k, :])
+
+        d[k : k + 3] = vB[k, :].ravel() - vN[k, :].ravel()
+        si = vB[k, :].ravel() + vN[k, :].ravel()
+        S[k : k + 3, :] = np.array(
+            [[0, -si[2], si[1]], [si[2], 0, -si[0]], [-si[1], si[0], 0]]
+        )
+        W[k : k + 3, k : k + 3] = w[k] * np.eye(3, 3)
+
+    qBar = np.dot(np.linalg.inv(np.dot(S.T, np.dot(W, S))), np.dot(S.T, np.dot(W, d)))
+
+    beta = np.insert(qBar, 0, 1.0) / np.sqrt(1 + np.inner(qBar, qBar))
 
     if beta[0] < 0:
         beta = -beta
