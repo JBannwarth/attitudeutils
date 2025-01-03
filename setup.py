@@ -12,5 +12,6 @@ setup(
     long_description=open('README.md').read(),
     install_requires=[
         "numpy",
+        "scipy"
     ],
 )
