@@ -5,6 +5,7 @@ Written by: Jeremie X. J. Bannwarth
 
 import numpy as np
 from attitudeutils.quaternion import dcm2quat
+from attitudeutils.common import tilde
 
 
 def mrpshort(sigma):
@@ -43,64 +44,119 @@ def mrpdiff(sigma, w):
     sigmaDot : numpy.array
         MRP derivative.
     """
-    sigmaTilde = np.array(
-        [[0, -sigma[2], sigma[1]], [sigma[2], 0, -sigma[0]], [-sigma[1], sigma[0], 0]]
-    )
-    B = (
-        (1 - np.linalg.norm(sigma) ** 2) * np.eye(3)
-        + 2 * sigmaTilde
-        + 2 * np.outer(sigma, sigma)
-    )
-
-    sigmaDot = 0.25 * np.dot(B, w)
+    sigmaDot = 0.25 * mrpB(sigma) @ w
     return sigmaDot
 
 
-def mrpadd(sigmaB, sigmaA):
-    """ Add the rotations defined by two MRP sets.
-
-    Perform the rotation [FN(sigmaTot)] = [FB(sigmaB)][BN(sigmaA)]
+def mrpB(sigma):
+    """Calculate the B matrix used for computing the MRP derivatives.
 
     Parameters
     ----------
-    sigmaB : numpy.array
+    sigma : numpy.array
+        MRPs representing the current orientation.
+
+    Returns
+    -------
+    B : numpy.array
+        B matrix in the equation sigmaDot = (1/4) * B @ w used for calculating
+        the MRP derivatives based on the body angular velocity w.
+    """
+    B = (
+        (1 - np.linalg.norm(sigma) ** 2) * np.eye(3)
+        + 2 * tilde(sigma)
+        + 2 * np.outer(sigma, sigma)
+    )
+    return B
+
+
+def mrpadd(sigmaAC, sigmaCB):
+    """Add the rotations defined by two MRP sets.
+
+    Perform the rotation [AB] = [AC][CB]
+
+    Parameters
+    ----------
+    sigmaAC : numpy.array
         MRPs defining the second rotation.
-    sigmaA : numpy.array
+    sigmaCB : numpy.array
         MRPs defining the first rotation.
 
     Returns
     -------
-    sigmaTot : numpy.array
+    sigmaAB : numpy.array
         MRPs defining the total rotation.
     """
     # Check for rotations close to 360 degrees (denominator close to zero)
     denominator = (
         1
-        + np.linalg.norm(sigmaA) ** 2 * np.linalg.norm(sigmaB) ** 2
-        - 2 * np.dot(sigmaA, sigmaB)
+        + np.linalg.norm(sigmaCB) ** 2 * np.linalg.norm(sigmaAC) ** 2
+        - 2 * np.dot(sigmaCB, sigmaAC)
     )
 
     if np.abs(denominator) < 1e-6:
-        sigmaA = mrp2shadow(sigmaA)
+        sigmaCB = mrp2shadow(sigmaCB)
 
-    sigmaANorm = np.linalg.norm(sigmaA)
-    sigmaBNorm = np.linalg.norm(sigmaB)
+    sigmaCBNorm = np.linalg.norm(sigmaCB)
+    sigmaACNorm = np.linalg.norm(sigmaAC)
 
-    sigmaTot = (
-        (1 - sigmaANorm ** 2) * sigmaB
-        + (1 - sigmaBNorm ** 2) * sigmaA
-        - 2 * np.cross(sigmaB, sigmaA)
-    ) / (1 + sigmaANorm ** 2 * sigmaBNorm ** 2 - 2 * np.dot(sigmaA, sigmaB))
+    sigmaAB = (
+        (1 - sigmaCBNorm**2) * sigmaAC
+        + (1 - sigmaACNorm**2) * sigmaCB
+        - 2 * np.cross(sigmaAC, sigmaCB)
+    ) / (1 + sigmaCBNorm**2 * sigmaACNorm**2 - 2 * np.dot(sigmaCB, sigmaAC))
 
-    if np.linalg.norm(sigmaTot) > 1:
-        sigmaTot = mrp2shadow(sigmaTot)
+    if np.linalg.norm(sigmaAB) > 1:
+        sigmaAB = mrp2shadow(sigmaAB)
 
-    return sigmaTot
+    return sigmaAB
+
+
+def mrpsub(sigmaAC, sigmaBC):
+    """Subtract the rotations defined by two MRP sets.
+
+    Perform the rotation [AB] = [AC]*inv([BC])
+
+    Parameters
+    ----------
+    sigmaAC : numpy.array
+        MRPs defining the rotation to be subtracted from.
+    sigmaBC : numpy.array
+        MRPs defining the rotation to subtract.
+
+    Returns
+    -------
+    sigmaAB : numpy.array
+        MRPs defining the resulting rotation.
+    """
+    # Check for rotations close to 360 degrees (denominator close to zero)
+    denominator = (
+        1
+        + np.linalg.norm(sigmaBC) ** 2 * np.linalg.norm(sigmaAC) ** 2
+        + 2 * np.dot(sigmaBC, sigmaAC)
+    )
+
+    if np.abs(denominator) < 1e-6:
+        sigmaBC = mrp2shadow(sigmaBC)
+
+    sigmaBCNorm = np.linalg.norm(sigmaBC)
+    sigmaACNorm = np.linalg.norm(sigmaAC)
+
+    sigmaAB = (
+        (1 - sigmaBCNorm**2) * sigmaAC
+        - (1 - sigmaACNorm**2) * sigmaBC
+        + 2 * np.cross(sigmaAC, sigmaBC)
+    ) / (1 + sigmaBCNorm**2 * sigmaACNorm**2 + 2 * np.dot(sigmaBC, sigmaAC))
+
+    if np.linalg.norm(sigmaAB) > 1:
+        sigmaAB = mrp2shadow(sigmaAB)
+
+    return sigmaAB
 
 
 def mrp2shadow(sigma):
     """Convert MRPs to MRPs shadow set.
-    
+
     Parameters
     ----------
     sigma : numpy.array
@@ -129,7 +185,8 @@ def mrp2quat(sigma):
     """
     sigmaNorm = np.linalg.norm(sigma)
     return np.append(
-        (1 - sigmaNorm ** 2) / (1 + sigmaNorm ** 2), 2 * sigma / (1 + np.square(sigma)),
+        (1 - sigmaNorm**2) / (1 + sigmaNorm**2),
+        2 * sigma / (1 + np.square(sigma)),
     )
 
 
@@ -162,14 +219,12 @@ def mrp2dcm(sigma):
     dcm : numpy.array
         Direction cosine matrix.
     """
-    sigmaTilde = np.array(
-        [[0, -sigma[2], sigma[1]], [sigma[2], 0, -sigma[0]], [-sigma[1], sigma[0], 0]]
-    )
+    sigmaTilde = tilde(sigma)
     sigmaNorm = np.linalg.norm(sigma)
     dcm = (
         np.eye(3)
-        + (8.0 * np.dot(sigmaTilde, sigmaTilde) - 4 * (1 - sigmaNorm ** 2) * sigmaTilde)
-        / (1.0 + sigmaNorm ** 2) ** 2
+        + (8.0 * np.dot(sigmaTilde, sigmaTilde) - 4 * (1 - sigmaNorm**2) * sigmaTilde)
+        / (1.0 + sigmaNorm**2) ** 2
     )
 
     return dcm
